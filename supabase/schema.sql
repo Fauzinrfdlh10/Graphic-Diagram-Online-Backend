@@ -3,7 +3,9 @@ create table if not exists user_profiles (
 	username text not null,
 	password text,
 	email text,
+	name text,
 	full_name text,
+	avatar text,
 	avatar_url text,
 	role text not null default 'user' check (role in ('admin', 'user')),
 	provider text default 'local',
@@ -20,8 +22,12 @@ alter table user_profiles add column if not exists username text;
 alter table user_profiles add column if not exists password text;
 alter table user_profiles add column if not exists role text not null default 'user';
 alter table user_profiles add column if not exists email text;
+alter table user_profiles add column if not exists name text;
 alter table user_profiles add column if not exists full_name text;
+alter table user_profiles add column if not exists avatar text;
 alter table user_profiles add column if not exists avatar_url text;
+update user_profiles set name = full_name where name is null and full_name is not null;
+update user_profiles set avatar = avatar_url where avatar is null and avatar_url is not null;
 do $$
 begin
 	if exists (

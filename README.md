@@ -61,6 +61,18 @@ go run ./cmd/api
 
 Server berjalan di `http://localhost:8080`.
 
+## Menjalankan dengan Docker
+
+Pastikan Docker Desktop dan Docker Compose tersedia, lalu dari direktori backend jalankan:
+
+```bash
+docker compose up --build
+```
+
+Compose menjalankan PostgreSQL dan Redis lokal, menyiapkan tabel backend, lalu menjalankan API di `http://localhost:8080`. Endpoint health check tersedia di `http://localhost:8080/api/health`. Untuk konfigurasi khusus, salin `.env.example` menjadi `.env` sebelum menjalankan Compose.
+
+Hentikan layanan dengan `Ctrl+C`, lalu jalankan `docker compose down`. Data PostgreSQL tetap disimpan di volume `postgres_data`; menghapusnya dengan `docker compose down -v` akan menghapus data database.
+
 ## Deploy ke Render
 
 Blueprint deploy berada di root repo backend:

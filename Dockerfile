@@ -6,16 +6,16 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Build the WebSocket-only binary. cmd/ws wires just the collaboration hub
-# (+ DB for membership auth and a /healthz probe) — no REST/OAuth/admin routes.
+# Build the API binary and database migration utility.
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -tags netgo -ldflags "-s -w" -o /out/gradiol-ws ./cmd/ws
+RUN CGO_ENABLED=0 GOOS=linux go build -tags netgo -ldflags "-s -w" -o /out/gradiol-api ./cmd/api \
+    && CGO_ENABLED=0 GOOS=linux go build -tags netgo -ldflags "-s -w" -o /out/gradiol-migrate ./cmd/migrate
 
 # --- Runtime stage ---
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
-COPY --from=build /out/gradiol-ws /app/gradiol-ws
+COPY --from=build --chown=nonroot:nonroot /out/gradiol-api /app/gradiol-api
+COPY --from=build --chown=nonroot:nonroot /out/gradiol-migrate /app/gradiol-migrate
 
-# Cloud Run injects PORT; config.Load() already reads it (defaults to 8080).
 EXPOSE 8080
-ENTRYPOINT ["/app/gradiol-ws"]
+ENTRYPOINT ["/app/gradiol-api"]

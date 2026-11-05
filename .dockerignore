@@ -1,6 +1,5 @@
 bin/
 *.md
-docs/
 .git/
 .github/
 .env
