@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -69,12 +70,14 @@ func (s *WorkspaceService) Create(ctx context.Context, userID uuid.UUID, req dto
 		return nil, appErr
 	}
 
-	slug := pkg.GenerateSlug(req.Name)
-
-	// Check slug uniqueness
-	existing, _ := s.wsRepo.FindBySlug(ctx, slug)
-	if existing != nil {
-		return nil, pkg.ErrConflict.WithMessage("workspace slug already exists: " + slug)
+	baseSlug := pkg.GenerateSlug(req.Name)
+	slug := baseSlug
+	for suffix := 2; ; suffix++ {
+		existing, _ := s.wsRepo.FindBySlug(ctx, slug)
+		if existing == nil {
+			break
+		}
+		slug = fmt.Sprintf("%s-%d", baseSlug, suffix)
 	}
 
 	ws := &model.Workspace{

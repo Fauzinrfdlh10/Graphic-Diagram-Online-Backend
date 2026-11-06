@@ -30,11 +30,18 @@ services:
       context: .
     entrypoint: ["/app/gradiol-migrate"]
     command: ["setup"]
-    env_file:
-      - .env
     environment:
       PORT: "8080"
+      DATABASE_URL: ${DATABASE_URL:-postgres://gradiol:gradiol_dev_password@db:5432/gradiol?sslmode=disable}
+      SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL:-}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8080}
       REDIS_URL: redis://redis:6379
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
     depends_on:
       db:
         condition: service_healthy
@@ -43,13 +50,20 @@ services:
   backend:
     build:
       context: .
-    env_file:
-      - .env
     ports:
       - "127.0.0.1:${PORT:-8080}:8080"
     environment:
       PORT: "8080"
+      DATABASE_URL: ${DATABASE_URL:-postgres://gradiol:gradiol_dev_password@db:5432/gradiol?sslmode=disable}
+      SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL:-}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8080}
       REDIS_URL: redis://redis:6379
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
