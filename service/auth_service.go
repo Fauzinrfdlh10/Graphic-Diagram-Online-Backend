@@ -77,6 +77,7 @@ func (s *AuthService) UpdateProfile(ctx context.Context, userID uuid.UUID, req d
 
 func (s *AuthService) Register(ctx context.Context, req dto.RegisterReq) (*model.UserProfile, *pkg.AppError) {
 	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 
 	if appErr := pkg.Validate(req); appErr != nil {
 		return nil, appErr
@@ -89,7 +90,7 @@ func (s *AuthService) Register(ctx context.Context, req dto.RegisterReq) (*model
 	if existingUser != nil {
 		return nil, pkg.ErrConflict.WithMessage("username or email already registered")
 	}
-	
+
 	existingEmail, appErr := s.userRepo.FindByEmail(ctx, req.Email)
 	if appErr != nil {
 		return nil, appErr
@@ -218,7 +219,7 @@ func (s *AuthService) UpsertProfile(ctx context.Context, userID uuid.UUID, email
 	} else {
 		// Existing user: preserve their edited username and full name
 		userToUpsert = existing
-		
+
 		// ALWAYS sync email if it was missing
 		if email != "" && (userToUpsert.Email == nil || *userToUpsert.Email == "") {
 			userToUpsert.Email = &email

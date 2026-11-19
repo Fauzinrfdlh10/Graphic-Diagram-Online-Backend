@@ -3,6 +3,8 @@ package handler
 import (
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -145,8 +147,12 @@ func (h *AuthHandler) UpdateProfile(c *fiber.Ctx) error {
 }
 
 func (h *AuthHandler) GoogleLogin(c *fiber.Ctx) error {
+	if h.cfg.GoogleClientID == "" || h.cfg.GoogleClientSecret == "" {
+		return h.redirectToLoginWithError(c, "google_not_configured")
+	}
+
 	redirectURI := h.oauthRedirectURI("google")
-	
+
 	// Generate CSRF state parameter
 	state := uuid.New().String()
 	c.Cookie(&fiber.Cookie{
@@ -157,25 +163,28 @@ func (h *AuthHandler) GoogleLogin(c *fiber.Ctx) error {
 		SameSite: "Lax",
 		MaxAge:   600, // 10 minutes
 	})
-	
-	url := fmt.Sprintf(
-		"https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=openid%%20email%%20profile&access_type=offline&prompt=consent&state=%s",
-		h.cfg.GoogleClientID,
-		redirectURI,
-		state,
-	)
-	return c.Redirect(url, fiber.StatusTemporaryRedirect)
+
+	query := url.Values{
+		"client_id":     {h.cfg.GoogleClientID},
+		"redirect_uri":  {redirectURI},
+		"response_type": {"code"},
+		"scope":         {"openid email profile"},
+		"access_type":   {"offline"},
+		"prompt":        {"consent"},
+		"state":         {state},
+	}
+	return c.Redirect("https://accounts.google.com/o/oauth2/v2/auth?"+query.Encode(), fiber.StatusTemporaryRedirect)
 }
 
 func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 	log.Println("[Auth] GoogleCallback handler entered")
-	
+
 	// Verify CSRF state parameter
 	state := c.Query("state")
 	cookieState := c.Cookies("oauth_state")
 	if state == "" || cookieState == "" || state != cookieState {
-		log.Printf("[Auth] Google callback CSRF validation failed: state=%s, cookie=%s", state, cookieState)
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=csrf_validation_failed", fiber.StatusTemporaryRedirect)
+		log.Println("[Auth] Google callback CSRF validation failed")
+		return h.redirectToLoginWithError(c, "csrf_validation_failed")
 	}
 	// Clear the state cookie
 	c.Cookie(&fiber.Cookie{
@@ -184,11 +193,14 @@ func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 		HTTPOnly: true,
 		MaxAge:   -1,
 	})
-	
+
 	code := c.Query("code")
 	if code == "" {
+		if c.Query("error") != "" {
+			return h.redirectToLoginWithError(c, "google_authorization_denied")
+		}
 		log.Println("[Auth] Google callback error: missing authorization code")
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=missing_code", fiber.StatusTemporaryRedirect)
+		return h.redirectToLoginWithError(c, "missing_code")
 	}
 
 	redirectURI := h.oauthRedirectURI("google")
@@ -196,14 +208,14 @@ func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 	tokenResp, err := exchangeGoogleCode(code, h.cfg.GoogleClientID, h.cfg.GoogleClientSecret, redirectURI)
 	if err != nil {
 		log.Printf("[Auth] Google code exchange failed: %v", err)
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=exchange_failed", fiber.StatusTemporaryRedirect)
+		return h.redirectToLoginWithError(c, "exchange_failed")
 	}
 
 	log.Println("[Auth] Fetching Google user info")
 	userInfo, err := fetchGoogleUserInfo(tokenResp.AccessToken)
 	if err != nil {
 		log.Printf("[Auth] Google user info failed: %v", err)
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=userinfo_failed", fiber.StatusTemporaryRedirect)
+		return h.redirectToLoginWithError(c, "userinfo_failed")
 	}
 
 	log.Printf("[Auth] Completing Google OAuth for sub=%s, email=%s", userInfo.Sub, userInfo.Email)
@@ -211,8 +223,12 @@ func (h *AuthHandler) GoogleCallback(c *fiber.Ctx) error {
 }
 
 func (h *AuthHandler) GitHubLogin(c *fiber.Ctx) error {
+	if h.cfg.GitHubClientID == "" || h.cfg.GitHubClientSecret == "" {
+		return h.redirectToLoginWithError(c, "github_not_configured")
+	}
+
 	redirectURI := h.oauthRedirectURI("github")
-	
+
 	// Generate CSRF state parameter
 	state := uuid.New().String()
 	c.Cookie(&fiber.Cookie{
@@ -223,14 +239,14 @@ func (h *AuthHandler) GitHubLogin(c *fiber.Ctx) error {
 		SameSite: "Lax",
 		MaxAge:   600, // 10 minutes
 	})
-	
-	url := fmt.Sprintf(
-		"https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=user:email&state=%s",
-		h.cfg.GitHubClientID,
-		redirectURI,
-		state,
-	)
-	return c.Redirect(url, fiber.StatusTemporaryRedirect)
+
+	query := url.Values{
+		"client_id":    {h.cfg.GitHubClientID},
+		"redirect_uri": {redirectURI},
+		"scope":        {"user:email"},
+		"state":        {state},
+	}
+	return c.Redirect("https://github.com/login/oauth/authorize?"+query.Encode(), fiber.StatusTemporaryRedirect)
 }
 
 func (h *AuthHandler) GitHubCallback(c *fiber.Ctx) error {
@@ -238,8 +254,8 @@ func (h *AuthHandler) GitHubCallback(c *fiber.Ctx) error {
 	state := c.Query("state")
 	cookieState := c.Cookies("oauth_state")
 	if state == "" || cookieState == "" || state != cookieState {
-		log.Printf("[Auth] GitHub callback CSRF validation failed: state=%s, cookie=%s", state, cookieState)
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=csrf_validation_failed", fiber.StatusTemporaryRedirect)
+		log.Println("[Auth] GitHub callback CSRF validation failed")
+		return h.redirectToLoginWithError(c, "csrf_validation_failed")
 	}
 	// Clear the state cookie
 	c.Cookie(&fiber.Cookie{
@@ -248,23 +264,26 @@ func (h *AuthHandler) GitHubCallback(c *fiber.Ctx) error {
 		HTTPOnly: true,
 		MaxAge:   -1,
 	})
-	
+
 	code := c.Query("code")
 	if code == "" {
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=missing_code", fiber.StatusTemporaryRedirect)
+		if c.Query("error") != "" {
+			return h.redirectToLoginWithError(c, "github_authorization_denied")
+		}
+		return h.redirectToLoginWithError(c, "missing_code")
 	}
 
 	redirectURI := h.oauthRedirectURI("github")
 	accessToken, err := exchangeGitHubCode(code, h.cfg.GitHubClientID, h.cfg.GitHubClientSecret, redirectURI)
 	if err != nil {
 		log.Printf("[Auth] GitHub code exchange failed: %v", err)
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=exchange_failed", fiber.StatusTemporaryRedirect)
+		return h.redirectToLoginWithError(c, "exchange_failed")
 	}
 
 	userInfo, err := fetchGitHubUserInfo(accessToken)
 	if err != nil {
 		log.Printf("[Auth] GitHub user info failed: %v", err)
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=userinfo_failed", fiber.StatusTemporaryRedirect)
+		return h.redirectToLoginWithError(c, "userinfo_failed")
 	}
 
 	userUUID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("github:"+fmt.Sprint(userInfo.ID)))
@@ -280,7 +299,7 @@ func (h *AuthHandler) completeOAuth(c *fiber.Ctx, providerUserID, email, fullNam
 	// Upsert user and get the profile with role from DB
 	user, appErr := h.authSvc.UpsertProfile(c.UserContext(), userID, email, strPtr(fullName), strPtr(avatarURL))
 	if appErr != nil {
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=profile_failed", fiber.StatusTemporaryRedirect)
+		return h.redirectToLoginWithError(c, "profile_failed")
 	}
 
 	// Use role and username from database! Also MUST use user.ID in case it was linked to an existing account!
@@ -293,10 +312,10 @@ func (h *AuthHandler) completeOAuth(c *fiber.Ctx, providerUserID, email, fullNam
 
 	token, err := h.signJWT(user.ID, username, user.Role)
 	if err != nil {
-		return c.Redirect(h.cfg.FrontendURL+"/login?error=token_failed", fiber.StatusTemporaryRedirect)
+		return h.redirectToLoginWithError(c, "token_failed")
 	}
 
-	callbackURL := fmt.Sprintf("%s/auth/callback#token=%s", h.cfg.FrontendURL, token)
+	callbackURL := fmt.Sprintf("%s/auth/callback#token=%s", strings.TrimRight(h.cfg.FrontendURL, "/"), token)
 	return c.Redirect(callbackURL, fiber.StatusTemporaryRedirect)
 }
 
@@ -330,7 +349,14 @@ func (h *AuthHandler) signJWT(userID uuid.UUID, username, role string) (string, 
 }
 
 func (h *AuthHandler) oauthRedirectURI(provider string) string {
-	return fmt.Sprintf("%s/api/auth/%s/callback", h.cfg.BackendURL, provider)
+	return fmt.Sprintf("%s/api/auth/%s/callback", strings.TrimRight(h.cfg.BackendURL, "/"), provider)
+}
+
+func (h *AuthHandler) redirectToLoginWithError(c *fiber.Ctx, code string) error {
+	return c.Redirect(
+		strings.TrimRight(h.cfg.FrontendURL, "/")+"/login?error="+url.QueryEscape(code),
+		fiber.StatusTemporaryRedirect,
+	)
 }
 
 func strPtr(value string) *string {

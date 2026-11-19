@@ -73,6 +73,19 @@ Compose menjalankan PostgreSQL dan Redis lokal, menyiapkan tabel backend, lalu m
 
 Hentikan layanan dengan `Ctrl+C`, lalu jalankan `docker compose down`. Data PostgreSQL tetap disimpan di volume `postgres_data`; menghapusnya dengan `docker compose down -v` akan menghapus data database.
 
+## OAuth Lokal
+
+Untuk login Google/GitHub lokal, backend dan database harus aktif. Jalankan `docker compose up --build` dari direktori backend, lalu pastikan `http://localhost:8080/api/health` mengembalikan status `ok`.
+
+Isi `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, dan `GITHUB_CLIENT_SECRET` di `.env`. Daftarkan callback URL berikut di pengaturan OAuth masing-masing provider:
+
+```text
+http://localhost:8080/api/auth/google/callback
+http://localhost:8080/api/auth/github/callback
+```
+
+`BACKEND_URL` harus sama dengan base URL backend yang bisa diakses browser dan provider. Untuk frontend lokal, set `NEXT_PUBLIC_API_URL=http://localhost:8080` di frontend. Pada deployment, gunakan URL HTTPS publik yang sama di konfigurasi provider dan environment backend.
+
 ## Deploy ke Render
 
 Blueprint deploy berada di root repo backend:
